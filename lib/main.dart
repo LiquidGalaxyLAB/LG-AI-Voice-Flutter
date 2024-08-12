@@ -41,6 +41,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late Deepgram deepgram;
   String transcript = '';
+  String groqResponse = '';
   final AudioRecorder _recorder = AudioRecorder();
   bool _isRecording = false;
   String? _recordingPath;
@@ -91,11 +92,50 @@ class _HomeScreenState extends State<HomeScreen> {
           transcript = sttResult.transcript ?? 'No transcript available';
         });
         print("Transcription result: ${sttResult.transcript}");
+
+        await _sendToGroqAPI(transcript);
       } else {
         print("API Key is invalid or expired.");
       }
     } catch (e) {
       print("Error: $e");
+    }
+  }
+
+  Future<void> _sendToGroqAPI(String content) async {
+    final String groqApiKey = dotenv.env['GROQ_API_KEY'] ?? '';
+    final String groqModel = 'gemma2-9b-it';
+
+    final url = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
+    final headers = {
+      'Authorization': 'Bearer $groqApiKey',
+      'Content-Type': 'application/json',
+    };
+    final body = jsonEncode({
+      'messages': [
+        {'role': 'user', 'content': content}
+      ],
+      'model': groqModel,
+    });
+
+    try {
+      final response = await http.post(url, headers: headers, body: body);
+      if (response.statusCode == 200) {
+        final jsonResponse = jsonDecode(response.body);
+
+        print("Raw JSON response: ${response.body}");
+
+        setState(() {
+          groqResponse = jsonResponse['choices'][0]['message']['content']
+                  .replaceAll(RegExp(r'[^\x00-\x7F]'), '') ??
+              'No response available';
+        });
+        print("Groq API response: $groqResponse");
+      } else {
+        print("Failed to get response from Groq API: ${response.statusCode}");
+      }
+    } catch (e) {
+      print("Error sending request to Groq API: $e");
     }
   }
 
@@ -144,6 +184,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: const EdgeInsets.all(16.0),
                 child: Text(
                   transcript,
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ),
+            const SizedBox(height: 20),
+            if (groqResponse.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  groqResponse,
                   style: const TextStyle(fontSize: 16),
                 ),
               ),
