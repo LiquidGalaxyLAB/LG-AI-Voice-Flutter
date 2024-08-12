@@ -11,6 +11,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -40,6 +41,9 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   late Deepgram deepgram;
   String transcript = '';
+  final AudioRecorder _recorder = AudioRecorder();
+  bool _isRecording = false;
+  String? _recordingPath;
 
   @override
   void initState() {
@@ -53,16 +57,36 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> transcribeAudioFile() async {
-    try {
-      final ByteData data = await rootBundle.load('assets/example.wav');
-      final Directory tempDir = await getTemporaryDirectory();
-      final File tempFile = File('${tempDir.path}/example.wav');
-      await tempFile.writeAsBytes(data.buffer.asUint8List(), flush: true);
+  Future<void> _toggleRecording() async {
+    if (_isRecording) {
+      final path = await _recorder.stop();
+      setState(() {
+        _isRecording = false;
+        _recordingPath = path;
+      });
+      if (_recordingPath != null) {
+        await _transcribeRecordedAudio(File(_recordingPath!));
+      }
+    } else {
+      if (await _recorder.hasPermission()) {
+        Directory tempDir = await getTemporaryDirectory();
+        String filePath = '${tempDir.path}/recorded_audio.m4a';
 
+        await _recorder.start(const RecordConfig(), path: filePath);
+
+        setState(() {
+          _isRecording = true;
+        });
+      } else {
+        print("Recording permission not granted");
+      }
+    }
+  }
+
+  Future<void> _transcribeRecordedAudio(File audioFile) async {
+    try {
       if (await deepgram.isApiKeyValid()) {
-        print("API Key is valid.");
-        final sttResult = await deepgram.transcribeFromFile(tempFile);
+        final sttResult = await deepgram.transcribeFromFile(audioFile);
         setState(() {
           transcript = sttResult.transcript ?? 'No transcript available';
         });
@@ -109,10 +133,10 @@ class _HomeScreenState extends State<HomeScreen> {
             Image.asset('assets/logo.png', width: 400),
             const SizedBox(height: 20),
             ElevatedButton(
-              onPressed: () => transcribeAudioFile(),
+              onPressed: _toggleRecording,
               style: buttonStyle,
-              child: const Text('Transcribe Audio',
-                  style: TextStyle(color: Colors.white)),
+              child: Text(_isRecording ? 'Stop Recording' : 'Start Recording',
+                  style: const TextStyle(color: Colors.white)),
             ),
             const SizedBox(height: 20),
             if (transcript.isNotEmpty)
@@ -127,5 +151,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _recorder.dispose();
+    super.dispose();
   }
 }
