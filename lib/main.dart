@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'global_connection.dart';
@@ -9,7 +8,6 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:deepgram_speech_to_text/deepgram_speech_to_text.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
@@ -141,12 +139,79 @@ class _HomeScreenState extends State<HomeScreen> {
           groqResponse = jsonResponse['choices'][0]['message']['content'] ??
               'No response available';
         });
-        print("Groq API response: $groqResponse");
+
+        final Map<String, dynamic> parsedResponse = jsonDecode(groqResponse);
+        if (parsedResponse['latitude'] != '' &&
+            parsedResponse['longitude'] != '') {
+          moveToLocation(
+              parsedResponse['latitude'], parsedResponse['longitude']);
+          await playTTS(parsedResponse['response']);
+        } else {
+          await playTTS("An error occurred. Please try again.");
+        }
       } else {
         print("Failed to get response from Groq API: ${response.statusCode}");
       }
     } catch (e) {
       print("Error sending request to Groq API: $e");
+      await playTTS("An error occurred. Please try again.");
+    }
+  }
+
+  void moveToLocation(String latitude, String longitude) async {
+    String locationKML = '''
+      <?xml version="1.0" encoding="UTF-8"?>
+      <kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">
+        <Document>
+          <LookAt>
+            <longitude>$longitude</longitude>
+            <latitude>$latitude</latitude>
+            <altitude>0</altitude>
+            <range>10000</range>
+            <tilt>0</tilt>
+            <heading>0</heading>
+            <gx:altitudeMode>relativeToGround</gx:altitudeMode>
+          </LookAt>
+        </Document>
+      </kml>
+    ''';
+
+    if (GlobalConnection.isConnected && GlobalConnection.sshClient != null) {
+      await GlobalConnection.sshClient!.execute('> /var/www/html/kmls.txt');
+      await GlobalConnection.sshClient!
+          .execute("echo '''$locationKML''' > /var/www/html/location.kml");
+      await GlobalConnection.sshClient!.execute(
+          'echo "http://lg1:81/kml/location.kml" > /var/www/html/kmls.txt');
+      await GlobalConnection.sshClient!.execute(
+          'echo "flytoview=<LookAt><longitude>$longitude</longitude><latitude>$latitude</latitude><altitude>0</altitude><range>10000</range><tilt>0</tilt><heading>0</heading><gx:altitudeMode>relativeToGround</gx:altitudeMode></LookAt>" > /tmp/query.txt');
+    }
+  }
+
+  Future<void> playTTS(String message) async {
+    final String deepgramApiKey = dotenv.env['DEEPGRAM_API_KEY'] ?? '';
+    final url = Uri.parse('https://api.deepgram.com/v1/listen?model=tts');
+    final headers = {
+      'Authorization': 'Token $deepgramApiKey',
+      'Content-Type': 'application/json',
+    };
+    final body = jsonEncode({'text': message, 'voice': 'en-US'});
+
+    try {
+      final response = await http.post(url, headers: headers, body: body);
+      if (response.statusCode == 200) {
+        final bytes = response.bodyBytes;
+        final Directory tempDir = await getTemporaryDirectory();
+        final String filePath = '${tempDir.path}/output.mp3';
+        final File file = File(filePath);
+        await file.writeAsBytes(bytes);
+
+        AudioPlayer player = AudioPlayer();
+        await player.play(DeviceFileSource(filePath));
+      } else {
+        print("Failed to get TTS audio: ${response.statusCode}");
+      }
+    } catch (e) {
+      print("Error in TTS request: $e");
     }
   }
 
@@ -161,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Simple Flutter App'),
+        title: const Text('LG AI Voice-to-Voice'),
         actions: <Widget>[
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
