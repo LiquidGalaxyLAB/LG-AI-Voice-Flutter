@@ -106,6 +106,18 @@ class _HomeScreenState extends State<HomeScreen> {
     final String groqApiKey = dotenv.env['GROQ_API_KEY'] ?? '';
     final String groqModel = 'gemma2-9b-it';
 
+    final String prePrompt = '''
+  Expect a user input where they would ask you to come up or talk about a location somewhere in the world. If the question is asking you for your opinion, pick one location even if you're not exactly sure about what's right. So what I want you to return is a prompt that answers the question as well as the coordinates in a JSON object. Do not say anything else and only return the object with the three things: latitude, longitude, and your response to the question. This is because I am using it for an app and it cannot be in any other format. For example, a user might ask you what the best restaurant in Paris is. Just pick one answer that can fit in, it does not need to be factual since it's an opinion. Let's say you choose the Clover Grill restaurant in Paris. Your response can be something along the lines of:
+
+  {"latitude": "48.86809847865695", "longitude": "2.3409434973723404", "response": "Clover Grill is a popular restaurant located in the heart of Paris, France. The restaurant serves a fusion of French and American cuisine, with a focus on grilled meats and seafood."}
+
+  And do not say ANYTHING ELSE as that will break my application. If you do not know anything about the location or do not know the coordinates or you do not know how to answer the question as the user may have said something unexpected, just return an empty string as the corresponding field(s) and I will handle the rest on my own.
+
+  Here's the user's input:
+  ''';
+
+    final String combinedPrompt = '$prePrompt $content';
+
     final url = Uri.parse('https://api.groq.com/openai/v1/chat/completions');
     final headers = {
       'Authorization': 'Bearer $groqApiKey',
@@ -113,7 +125,7 @@ class _HomeScreenState extends State<HomeScreen> {
     };
     final body = jsonEncode({
       'messages': [
-        {'role': 'user', 'content': content}
+        {'role': 'user', 'content': combinedPrompt}
       ],
       'model': groqModel,
     });
@@ -126,8 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
         print("Raw JSON response: ${response.body}");
 
         setState(() {
-          groqResponse = jsonResponse['choices'][0]['message']['content']
-                  .replaceAll(RegExp(r'[^\x00-\x7F]'), '') ??
+          groqResponse = jsonResponse['choices'][0]['message']['content'] ??
               'No response available';
         });
         print("Groq API response: $groqResponse");
