@@ -38,7 +38,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late Deepgram deepgram;
-  String transcript = '';
   String groqResponse = '';
   final AudioRecorder _recorder = AudioRecorder();
   bool _isRecording = false;
@@ -77,7 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _isRecording = true;
         });
       } else {
-        print("Recording permission not granted");
+        await _handleError("Recording permission not granted");
       }
     }
   }
@@ -86,17 +85,20 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       if (await deepgram.isApiKeyValid()) {
         final sttResult = await deepgram.transcribeFromFile(audioFile);
-        setState(() {
-          transcript = sttResult.transcript ?? 'No transcript available';
-        });
-        print("Transcription result: ${sttResult.transcript}");
+        final transcript = sttResult.transcript ?? '';
 
-        await _sendToGroqAPI(transcript);
+        print("Transcription result: $transcript");
+
+        if (transcript.isNotEmpty) {
+          await _sendToGroqAPI(transcript);
+        } else {
+          await _handleError("No transcription available");
+        }
       } else {
-        print("API Key is invalid or expired.");
+        await _handleError("API Key is invalid or expired.");
       }
     } catch (e) {
-      print("Error: $e");
+      await _handleError("Error: $e");
     }
   }
 
@@ -135,10 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         print("Raw JSON response: ${response.body}");
 
-        setState(() {
-          groqResponse = jsonResponse['choices'][0]['message']['content'] ??
-              'No response available';
-        });
+        groqResponse = jsonResponse['choices'][0]['message']['content'] ?? '';
 
         final Map<String, dynamic> parsedResponse = jsonDecode(groqResponse);
         if (parsedResponse['latitude'] != '' &&
@@ -146,15 +145,47 @@ class _HomeScreenState extends State<HomeScreen> {
           moveToLocation(
               parsedResponse['latitude'], parsedResponse['longitude']);
           await playTTS(parsedResponse['response']);
+          setState(() {
+            groqResponse = parsedResponse['response'];
+          });
         } else {
-          await playTTS("An error occurred. Please try again.");
+          await _handleError("Invalid location data from Groq");
         }
       } else {
-        print("Failed to get response from Groq API: ${response.statusCode}");
+        await _handleError(
+            "Failed to get response from Groq API: ${response.statusCode}");
       }
     } catch (e) {
-      print("Error sending request to Groq API: $e");
-      await playTTS("An error occurred. Please try again.");
+      await _handleError("Error sending request to Groq API: $e");
+    }
+  }
+
+  Future<void> playTTS(String message) async {
+    final String deepgramApiKey = dotenv.env['DEEPGRAM_API_KEY'] ?? '';
+    final url =
+        Uri.parse('https://api.deepgram.com/v1/speak?model=aura-asteria-en');
+    final headers = {
+      'Authorization': 'Token $deepgramApiKey',
+      'Content-Type': 'application/json',
+    };
+    final body = jsonEncode({'text': message});
+
+    try {
+      final response = await http.post(url, headers: headers, body: body);
+      if (response.statusCode == 200) {
+        final bytes = response.bodyBytes;
+        final Directory tempDir = await getTemporaryDirectory();
+        final String filePath = '${tempDir.path}/output.mp3';
+        final File file = File(filePath);
+        await file.writeAsBytes(bytes);
+
+        AudioPlayer player = AudioPlayer();
+        await player.play(DeviceFileSource(filePath));
+      } else {
+        await _handleError("Failed to get TTS audio: ${response.statusCode}");
+      }
+    } catch (e) {
+      await _handleError("Error in TTS request: $e");
     }
   }
 
@@ -187,32 +218,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> playTTS(String message) async {
-    final String deepgramApiKey = dotenv.env['DEEPGRAM_API_KEY'] ?? '';
-    final url = Uri.parse('https://api.deepgram.com/v1/listen?model=tts');
-    final headers = {
-      'Authorization': 'Token $deepgramApiKey',
-      'Content-Type': 'application/json',
-    };
-    final body = jsonEncode({'text': message, 'voice': 'en-US'});
-
-    try {
-      final response = await http.post(url, headers: headers, body: body);
-      if (response.statusCode == 200) {
-        final bytes = response.bodyBytes;
-        final Directory tempDir = await getTemporaryDirectory();
-        final String filePath = '${tempDir.path}/output.mp3';
-        final File file = File(filePath);
-        await file.writeAsBytes(bytes);
-
-        AudioPlayer player = AudioPlayer();
-        await player.play(DeviceFileSource(filePath));
-      } else {
-        print("Failed to get TTS audio: ${response.statusCode}");
-      }
-    } catch (e) {
-      print("Error in TTS request: $e");
-    }
+  Future<void> _handleError(String errorMessage) async {
+    print(errorMessage);
+    setState(() {
+      groqResponse = "An error occurred. Please try again.";
+    });
   }
 
   @override
@@ -245,8 +255,10 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
-            Image.asset('assets/logo.png', width: 400),
+            const Spacer(flex: 2),
+            Image.asset('assets/logo.png', width: 300),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _toggleRecording,
@@ -254,24 +266,17 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Text(_isRecording ? 'Stop Recording' : 'Start Recording',
                   style: const TextStyle(color: Colors.white)),
             ),
-            const SizedBox(height: 20),
-            if (transcript.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  transcript,
-                  style: const TextStyle(fontSize: 16),
-                ),
-              ),
-            const SizedBox(height: 20),
+            const Spacer(flex: 1),
             if (groqResponse.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.symmetric(horizontal: 40.0),
                 child: Text(
                   groqResponse,
-                  style: const TextStyle(fontSize: 16),
+                  style: const TextStyle(fontSize: 18),
+                  textAlign: TextAlign.center,
                 ),
               ),
+            const Spacer(flex: 2),
           ],
         ),
       ),
