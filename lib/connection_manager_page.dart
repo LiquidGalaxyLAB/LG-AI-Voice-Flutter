@@ -12,21 +12,44 @@ class _ConnectionManagerPageState extends State<ConnectionManagerPage> {
   final _ipController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _portController = TextEditingController(text: "22");
-  final _numberOfScreens = TextEditingController(text: "3");
+  final _portController = TextEditingController();
+  final _numberOfScreensController = TextEditingController();
+  final _deepgramApiKeyController = TextEditingController();
+  final _groqApiKeyController = TextEditingController();
+
+  bool _isPasswordVisible = false;
+  bool _isDeepgramApiKeyVisible = false;
+  bool _isGroqApiKeyVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ipController.text = GlobalConnection.host;
+    _usernameController.text = GlobalConnection.username;
+    _passwordController.text = GlobalConnection.clientPassword;
+    _portController.text = GlobalConnection.port;
+    _numberOfScreensController.text =
+        GlobalConnection.numberOfScreens.toString();
+    _deepgramApiKeyController.text = GlobalConnection.deepgramApiKey;
+    _groqApiKeyController.text = GlobalConnection.groqApiKey;
+  }
 
   Future<void> _connect() async {
     bool result = await GlobalConnection.connect(
-        _ipController.text,
-        _usernameController.text,
-        _passwordController.text,
-        _numberOfScreens.text,
-        _portController.text);
+      _ipController.text,
+      _usernameController.text,
+      _passwordController.text,
+      _numberOfScreensController.text,
+      _portController.text,
+      _deepgramApiKeyController.text,
+      _groqApiKeyController.text,
+    );
     _showDialog(
-        result ? "Connected!" : "Connection Failed",
-        result
-            ? "You have successfully connected."
-            : "Failed to connect. Please try again.");
+      result ? "Connected!" : "Connection Failed",
+      result
+          ? "You have successfully connected."
+          : "Failed to connect. Please try again.",
+    );
     setState(() {});
   }
 
@@ -56,7 +79,7 @@ class _ConnectionManagerPageState extends State<ConnectionManagerPage> {
   @override
   Widget build(BuildContext context) {
     final ButtonStyle buttonStyle = ElevatedButton.styleFrom(
-      backgroundColor: Colors.lightBlue,
+      backgroundColor: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 20),
       textStyle: const TextStyle(fontSize: 18, color: Colors.white),
     );
@@ -103,8 +126,23 @@ class _ConnectionManagerPageState extends State<ConnectionManagerPage> {
               const SizedBox(height: 10),
               TextField(
                 controller: _passwordController,
-                decoration: const InputDecoration(
-                    labelText: 'Password', border: OutlineInputBorder()),
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isPasswordVisible
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isPasswordVisible = !_isPasswordVisible;
+                      });
+                    },
+                  ),
+                ),
+                obscureText: !_isPasswordVisible,
               ),
               const SizedBox(height: 10),
               TextField(
@@ -117,12 +155,54 @@ class _ConnectionManagerPageState extends State<ConnectionManagerPage> {
               ),
               const SizedBox(height: 10),
               TextField(
-                controller: _numberOfScreens,
+                controller: _numberOfScreensController,
                 decoration: const InputDecoration(
                   labelText: 'Number of Screens',
                   border: OutlineInputBorder(),
                 ),
                 keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _deepgramApiKeyController,
+                decoration: InputDecoration(
+                  labelText: 'Deepgram API Key',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isDeepgramApiKeyVisible
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isDeepgramApiKeyVisible = !_isDeepgramApiKeyVisible;
+                      });
+                    },
+                  ),
+                ),
+                obscureText: !_isDeepgramApiKeyVisible,
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _groqApiKeyController,
+                decoration: InputDecoration(
+                  labelText: 'Groq API Key',
+                  border: const OutlineInputBorder(),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isGroqApiKeyVisible
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isGroqApiKeyVisible = !_isGroqApiKeyVisible;
+                      });
+                    },
+                  ),
+                ),
+                obscureText: !_isGroqApiKeyVisible,
               ),
               const SizedBox(height: 10),
               Row(

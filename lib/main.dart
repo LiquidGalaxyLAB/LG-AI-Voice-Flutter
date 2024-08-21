@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'global_connection.dart';
 import 'connection_manager_page.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'help_page.dart';
 import 'package:deepgram_speech_to_text/deepgram_speech_to_text.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
@@ -13,8 +13,7 @@ import 'package:record/record.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-void main() async {
-  await dotenv.load(fileName: ".env");
+void main() {
   runApp(const MyApp());
 }
 
@@ -46,8 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    String apiKey = dotenv.env['DEEPGRAM_API_KEY'] ?? '';
-    deepgram = Deepgram(apiKey, baseQueryParams: {
+    deepgram = Deepgram(GlobalConnection.deepgramApiKey, baseQueryParams: {
       'model': 'nova-2-general',
       'detect_language': true,
       'filler_words': false,
@@ -76,7 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _isRecording = true;
         });
       } else {
-        await _handleError("Recording permission not granted");
+        await _handleError("Recording permission not granted.");
       }
     }
   }
@@ -87,23 +85,21 @@ class _HomeScreenState extends State<HomeScreen> {
         final sttResult = await deepgram.transcribeFromFile(audioFile);
         final transcript = sttResult.transcript ?? '';
 
-        print("Transcription result: $transcript");
-
         if (transcript.isNotEmpty) {
           await _sendToGroqAPI(transcript);
         } else {
-          await _handleError("No transcription available");
+          await _handleError("No transcription available.");
         }
       } else {
-        await _handleError("API Key is invalid or expired.");
+        await _handleError("Deepgram API Key is invalid or expired.");
       }
     } catch (e) {
-      await _handleError("Error: $e");
+      await _handleError("Error during transcription: $e");
     }
   }
 
   Future<void> _sendToGroqAPI(String content) async {
-    final String groqApiKey = dotenv.env['GROQ_API_KEY'] ?? '';
+    final String groqApiKey = GlobalConnection.groqApiKey;
     final String groqModel = 'gemma2-9b-it';
 
     final String prePrompt = '''
@@ -135,8 +131,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (response.statusCode == 200) {
         final jsonResponse = jsonDecode(response.body);
 
-        print("Raw JSON response: ${response.body}");
-
         groqResponse = jsonResponse['choices'][0]['message']['content'] ?? '';
 
         final Map<String, dynamic> parsedResponse = jsonDecode(groqResponse);
@@ -149,7 +143,7 @@ class _HomeScreenState extends State<HomeScreen> {
             groqResponse = parsedResponse['response'];
           });
         } else {
-          await _handleError("Invalid location data from Groq");
+          await _handleError("Invalid location data from Groq.");
         }
       } else {
         await _handleError(
@@ -161,7 +155,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> playTTS(String message) async {
-    final String deepgramApiKey = dotenv.env['DEEPGRAM_API_KEY'] ?? '';
+    final String deepgramApiKey = GlobalConnection.deepgramApiKey;
     final url =
         Uri.parse('https://api.deepgram.com/v1/speak?model=aura-asteria-en');
     final headers = {
@@ -221,7 +215,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _handleError(String errorMessage) async {
     print(errorMessage);
     setState(() {
-      groqResponse = "An error occurred. Please try again.";
+      groqResponse = errorMessage;
     });
   }
 
@@ -235,9 +229,21 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
+        backgroundColor: Colors.white,
         title: const Text('LG AI Voice-to-Voice'),
         actions: <Widget>[
+          IconButton(
+            icon: const Icon(Icons.help_outline, size: 50),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const HelpPage(),
+                ),
+              );
+            },
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: IconButton(
@@ -258,7 +264,7 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
             const Spacer(flex: 2),
-            Image.asset('assets/logo.png', width: 300),
+            Image.asset('assets/logo.png', width: 500),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: _toggleRecording,
